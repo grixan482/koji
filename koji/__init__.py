@@ -1268,6 +1268,7 @@ def genMockConfig(name, arch, managed=False, repoid=None, tag_name=None, **opts)
     if managed:
         buildroot_id = opts.get('buildroot_id')
 
+    install_group = opts.get('install_group', 'build')
     # rely on the mock defaults being correct
     # and only includes changes from the defaults here
     config_opts = {
@@ -1276,7 +1277,7 @@ def genMockConfig(name, arch, managed=False, repoid=None, tag_name=None, **opts)
         'target_arch' : opts.get('target_arch', arch),
         'chroothome': '/builddir',
         # Use the group data rather than a generated rpm
-        'chroot_setup_cmd': 'groupinstall %s' % opts.get('install_group', 'build'),
+        'chroot_setup_cmd': 'groupinstall %s' % install_group,
         # don't encourage network access from the chroot
         'use_host_resolv': opts.get('use_host_resolv', False),
         # Don't let a build last more than 24 hours
@@ -1329,10 +1330,13 @@ name=build
         yc_parts.append("        %s\n" % url)
     config_opts['yum.conf'] = ''.join(yc_parts)
 
+    root_cache = opts.get('buildroot_cache', False)
+
     plugin_conf = {
         'ccache_enable': False,
         'yum_cache_enable': False,
-        'root_cache_enable': False
+        'root_cache_enable': root_cache,
+        'tmpfs_enable': False,
     }
 
     #XXX - this needs to be configurable
@@ -1363,6 +1367,12 @@ name=build
     parts.append("\n")
     for key, value in plugin_conf.iteritems():
         parts.append("config_opts['plugin_conf'][%r] = %r\n" % (key, value))
+    if root_cache:
+        cache_dir = opts.get("buildroot_cache_dir", '/var/cache/mock')
+        parts.append("config_opts['plugin_conf']['root_cache_opts']\
+['dir'] = '{0}/{1}/{2}/'\n".format(cache_dir, tag_name, install_group))
+        # Temporary disable age_check of root_cache
+        parts.append("config_opts['plugin_conf']['root_cache_opts']['age_check'] = False\n")
     parts.append("\n")
 
     if bind_opts:
@@ -1378,6 +1388,8 @@ name=build
     parts.append("\n")
     for key, value in files.iteritems():
         parts.append("config_opts['files'][%r] = %r\n" % (key, value))
+
+    parts.append("config_opts['environment']['TASK_ID'] = '{0}'\n".format(opts['task_id']))
 
     return ''.join(parts)
 
