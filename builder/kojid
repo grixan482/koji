@@ -241,6 +241,9 @@ class BuildRoot(object):
         for k in ('mockdir', 'topdir', 'topurl', 'topurls', 'packager', 'vendor', 'distribution', 'mockhost', 'yum_proxy', 'rpmbuild_timeout'):
             if hasattr(self.options, k):
                 opts[k] = getattr(self.options, k)
+        for k in ('buildroot_cache', 'buildroot_cache_dir'):
+            if hasattr(self.options, k):
+                opts[k] = getattr(self.options, k)
         opts['buildroot_id'] = self.id
         if self.setup_dns:
             opts['rpmbuild_networking'] = True
@@ -5770,6 +5773,8 @@ def get_options():
                 'pluginpath': '/usr/lib/koji-builder-plugins',
                 'mockdir': '/var/lib/mock',
                 'mockuser': 'kojibuilder',
+                'buildroot_cache': False,
+                'buildroot_cache_dir': '/var/cache/mock',
                 'packager': 'Koji',
                 'vendor': 'Koji',
                 'distribution': 'Koji',
@@ -5822,7 +5827,8 @@ def get_options():
             elif name in ['offline_retry', 'use_createrepo_c',  'createrepo_skip_stat',
                           'createrepo_update', 'keepalive', 'use_fast_upload',
                           'support_rpm_source_layout', 'krb_rdns', 'krb_canon_host',
-                          'build_arch_can_fail', 'no_ssl_verify', 'log_timestamps']:
+                          'build_arch_can_fail', 'no_ssl_verify', 'log_timestamps',
+                          'buildroot_cache']:
                 defaults[name] = config.getboolean('kojid', name)
             elif name in ['plugin', 'plugins']:
                 defaults['plugin'] = value.split()
