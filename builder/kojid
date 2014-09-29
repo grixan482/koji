@@ -232,6 +232,11 @@ class BuildRoot(object):
             if hasattr(self.options, k):
                 opts[k] = getattr(self.options, k)
 
+        if getattr(self.options, "yum_ssl"):
+            for k in ('yum_ssl', 'yum_ssl_ca', 'yum_ssl_cert', 'yum_ssl_key'):
+                if hasattr(self.options, k):
+                    opts[k] = getattr(self.options, k)
+
         opts['task_id'] = self.task_id
         opts['buildroot_id'] = self.id
         opts['use_host_resolv'] = self.setup_dns
@@ -4103,6 +4108,10 @@ def get_options():
                 'allowed_scms': '',
                 'support_rpm_source_layout': True,
                 'yum_proxy': None,
+                'yum_ssl': False,
+                'yum_ssl_ca': '/etc/pki/tls/ca.crt',
+                'yum_ssl_cert': '/etc/pki/tls/client.crt',
+                'yum_ssl_key': '/etc/pki/tls/client.key',
                 'maven_repo_ignore': '*.md5 *.sha1 maven-metadata*.xml _maven.repositories '
                                      'resolver-status.properties *.lastUpdated',
                 'failed_buildroot_lifetime' : 3600 * 4,
@@ -4120,7 +4129,8 @@ def get_options():
                 except ValueError:
                     quit("value for %s option must be a valid integer" % name)
             elif name in ['offline_retry', 'createrepo_skip_stat', 'createrepo_update',
-                          'keepalive', 'use_fast_upload', 'support_rpm_source_layout', 'buildroot_cache']:
+                          'keepalive', 'use_fast_upload', 'support_rpm_source_layout',
+                          'buildroot_cache', 'yum_ssl']:
                 defaults[name] = config.getboolean('kojid', name)
             elif name in ['plugin', 'plugins']:
                 defaults['plugin'] = value.split()

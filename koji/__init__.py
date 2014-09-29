@@ -1320,6 +1320,22 @@ obsoletes=1
 gpgcheck=0
 assumeyes=1
 
+""")
+
+    if opts.get("yum_ssl"):
+        if bind_opts is None:
+            bind_opts = {}
+        bind_opts.setdefault("dirs", {})
+        yc_parts.append("""\
+# ssl options
+sslverify=1
+sslcacert={yum_ssl_ca}
+sslclientcert={yum_ssl_cert}
+sslclientkey={yum_ssl_key}
+
+""".format(**opts))
+
+    yc_parts.append("""\
 # repos
 
 [build]
@@ -1374,6 +1390,12 @@ name=build
         # Temporary disable age_check of root_cache
         parts.append("config_opts['plugin_conf']['root_cache_opts']['age_check'] = False\n")
     parts.append("\n")
+
+    if opts.get("yum_ssl"):
+        for ssl_opt in ('yum_ssl_ca', 'yum_ssl_cert', 'yum_ssl_key'):
+            ssl_dir = os.path.split(opts[ssl_opt])[0]
+            bind_opts["dirs"][ssl_dir] = ssl_dir
+        bind_opts["dirs"]["/dev"] = "/dev"
 
     if bind_opts:
         # This line is REQUIRED for mock to work if bind_opts defined.
