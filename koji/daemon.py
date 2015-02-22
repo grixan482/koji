@@ -189,6 +189,12 @@ class SCM(object):
 
         scheme://[user@]host/path/to/repo?path/to/module#revision_or_tag_identifier
 
+        The special github url with refs:
+
+        scheme://[user@]host/path/to/repo?path/to/module#sha_or_tag+refs/some/custom/ref
+
+        If custom ref specified, we need to fetch this ref before checkout commit.
+
         The initialized SCM object will have the following attributes:
         - url (the unmodified url)
         - scheme
@@ -211,13 +217,17 @@ class SCM(object):
 
         self.url = url
         scheme, user, host, path, query, fragment = self._parse_url()
+        fragment = fragment.split("+")
 
         self.scheme = scheme
         self.user = user
         self.host = host
         self.repository = path
         self.module = query
-        self.revision = fragment
+        self.revision = fragment[0]
+        self.ref = None
+        if len(fragment) >= 2:
+            self.ref = fragment[1]
         self.use_common = True
         self.source_cmd = ['make', 'sources']
 
@@ -334,6 +344,7 @@ class SCM(object):
 
         update_checkout_cmd = None
         update_checkout_dir = None
+        update_ref_cmd = None
         env = None
         def _run(cmd, chdir=None, fatal=False, log=True, _count=[0]):
             if globals().get('KOJIKAMID'):
@@ -385,6 +396,10 @@ class SCM(object):
             update_checkout_cmd = ['git', 'reset', '--hard', self.revision]
             update_checkout_dir = sourcedir
 
+            # fetch custom reference
+            if self.ref is not None:
+                update_ref_cmd = ['git', 'fetch', 'origin', self.ref]
+
             # self.module may be empty, in which case the specfile should be in the top-level directory
             if self.module:
                 # Treat the module as a directory inside the git repository
@@ -412,6 +427,10 @@ class SCM(object):
             common_checkout_cmd = ['git', 'clone', commonrepo, 'common']
             update_checkout_cmd = ['git', 'reset', '--hard', self.revision]
             update_checkout_dir = sourcedir
+
+            # fetch custom reference
+            if self.ref is not None:
+                update_ref_cmd = ['git', 'fetch', 'origin', self.ref]
 
             # self.module may be empty, in which case the specfile should be in the top-level directory
             if self.module:
@@ -447,6 +466,8 @@ class SCM(object):
             if self.scmtype.startswith('GIT') and globals().get('KOJIKAMID'):
                 _run(['git', 'config', 'core.autocrlf',  'true'], chdir=update_checkout_dir, fatal=True)
                 _run(['git', 'config', 'core.safecrlf',  'true'], chdir=update_checkout_dir, fatal=True)
+            if update_ref_cmd:
+                _run(update_ref_cmd, chdir=update_checkout_dir, fatal=True)
             _run(update_checkout_cmd, chdir=update_checkout_dir, fatal=True)
 
         if self.use_common and not globals().get('KOJIKAMID'):
