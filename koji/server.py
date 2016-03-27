@@ -1,6 +1,6 @@
 # common server code for koji
 #
-# Copyright (c) 2012 Red Hat
+# Copyright (c) 2012-2014 Red Hat, Inc.
 #
 #    Koji is free software; you can redistribute it and/or
 #    modify it under the terms of the GNU Lesser General Public
@@ -158,7 +158,7 @@ class WSGIWrapper(object):
             for chunk in result:
                 if chunk and not self.set_headers:
                     raise RuntimeError, "write() called before start_response()"
-                write(data)
+                write(chunk)
         if not req.bytes_sent:
             #application sent nothing back
             req.set_content_length(0)
@@ -187,4 +187,3 @@ class InputWrapper(object):
         while line:
             yield line
             line = self.readline()
-

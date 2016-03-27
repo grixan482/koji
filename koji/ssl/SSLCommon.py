@@ -37,7 +37,7 @@ def CreateSSLContext(certs):
         if f and not os.access(f, os.R_OK):
             raise StandardError, "%s does not exist or is not readable" % f
 
-    ctx = SSL.Context(SSL.SSLv3_METHOD)   # SSLv3 only
+    ctx = SSL.Context(SSL.SSLv23_METHOD)   # Use best possible TLS Method
     ctx.use_certificate_file(key_and_cert)
     ctx.use_privatekey_file(key_and_cert)
     ctx.load_client_ca(ca_cert)
@@ -45,7 +45,7 @@ def CreateSSLContext(certs):
     verify = SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT
     ctx.set_verify(verify, our_verify)
     ctx.set_verify_depth(10)
-    ctx.set_options(SSL.OP_NO_SSLv2 | SSL.OP_NO_TLSv1)
+    ctx.set_options(SSL.OP_NO_SSLv3 | SSL.OP_NO_SSLv2) # disable SSLv2 and SSLv3
     return ctx
 
 
@@ -139,4 +139,3 @@ class PlgHTTPS(httplib.HTTP):
 
     def __init__(self, host='', port=None, ssl_context=None, strict=None, timeout=None):
         self._setup(self._connection_class(host, port, ssl_context, strict, timeout))
-

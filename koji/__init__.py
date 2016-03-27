@@ -1,11 +1,11 @@
 # Python module
 # Common functions
 
-# Copyright (c) 2005-2012 Red Hat
+# Copyright (c) 2005-2014 Red Hat, Inc.
 #
 #    Koji is free software; you can redistribute it and/or
 #    modify it under the terms of the GNU Lesser General Public
-#    License as published by the Free Software Foundation; 
+#    License as published by the Free Software Foundation;
 #    version 2.1 of the License.
 #
 #    This software is distributed in the hope that it will be useful,
@@ -19,6 +19,7 @@
 #
 # Authors:
 #       Mike McLean <mikem@redhat.com>
+#       Mike Bonnet <mikeb@redhat.com>
 
 import sys
 try:
@@ -56,7 +57,7 @@ import xmlrpclib
 import xml.sax
 import xml.sax.handler
 from xmlrpclib import loads, dumps, Fault
-#import OpenSSL.SSL
+import OpenSSL
 import zipfile
 
 def _(args):
@@ -322,6 +323,9 @@ class ParameterError(GenericError):
     """Raised when an rpc call receives incorrect arguments"""
     faultCode = 1019
 
+class ImportError(GenericError):
+    """Raised when an import fails"""
+    faultCode = 1020
 
 class MultiCallInProgress(object):
     """
@@ -986,7 +990,7 @@ def parse_pom(path=None, contents=None):
         raise GenericError, 'either a path to a pom file or the contents of a pom file must be specified'
 
     # A common problem is non-UTF8 characters in XML files, so we'll convert the string first
-    
+
     contents = fixEncoding(contents)
 
     try:
@@ -1283,6 +1287,8 @@ def genMockConfig(name, arch, managed=False, repoid=None, tag_name=None, **opts)
         # Don't let a build last more than 24 hours
         'rpmbuild_timeout': opts.get('rpmbuild_timeout', 86400)
     }
+    if opts.get('package_manager'):
+        config_opts['package_manager'] = opts['package_manager']
 
     # bind_opts are used to mount parts (or all of) /dev if needed.
     # See kojid::LiveCDTask for a look at this option in action.
@@ -1467,6 +1473,22 @@ def openRemoteFile(relpath, topurl=None, topdir=None):
     else:
         raise GenericError, "No access method for remote file: %s" % relpath
     return fo
+
+
+def config_directory_contents(dir_name):
+    configs = []
+    try:
+        conf_dir_contents = os.listdir(dir_name)
+    except OSError, exception:
+        if exception.errno != errno.ENOENT:
+            raise
+    else:
+        for name in sorted(conf_dir_contents):
+            if not name.endswith('.conf'):
+                continue
+            config_full_name = os.path.join(dir_name, name)
+            configs.append(config_full_name)
+    return configs
 
 
 class PathInfo(object):
@@ -1736,7 +1758,7 @@ class ClientSession(object):
     def _serverPrincipal(self, cprinc):
         """Get the Kerberos principal of the server we're connecting
         to, based on baseurl."""
-        servername = self._host
+        servername = socket.getfqdn(self._host)
         #portspec = servername.find(':')
         #if portspec != -1:
         #    servername = servername[:portspec]
@@ -1954,6 +1976,34 @@ class ClientSession(object):
                     raise
                 except Exception, e:
                     self._close_connection()
+                    if isinstance(e, OpenSSL.SSL.Error):
+                        # pyOpenSSL doesn't use different exception
+                        # subclasses, we have to actually parse the args
+                        for arg in e.args:
+                            # First, check to see if 'arg' is iterable because
+                            # it can be anything..
+                            try:
+                                iter(arg)
+                            except TypeError:
+                                continue
+
+                            # We do all this so that we can detect cert expiry
+                            # so we can avoid retrying those over and over.
+                            for items in arg:
+                                try:
+                                    iter(items)
+                                except TypeError:
+                                    continue
+
+                                if len(items) != 3:
+                                    continue
+
+                                _, _, ssl_reason = items
+
+                                if ('certificate revoked' in ssl_reason or
+                                        'certificate expired' in ssl_reason):
+                                    # There's no point in retrying for this
+                                    raise
                     if not self.logged_in:
                         #in the past, non-logged-in sessions did not retry. For compatibility purposes
                         #this behavior is governed by the anon_retry opt.
@@ -1965,7 +2015,7 @@ class ClientSession(object):
                     if self.logger.isEnabledFor(logging.DEBUG):
                         tb_str = ''.join(traceback.format_exception(*sys.exc_info()))
                         self.logger.debug(tb_str)
-                    self.logger.info("Try #%d for call %d (%s) failed: %s", tries, self.callnum, name, e)
+                    self.logger.info("Try #%s for call %s (%s) failed: %s", tries, self.callnum, name, e)
                 if tries > 1:
                     # first retry is immediate, after that we honor retry_interval
                     time.sleep(interval)
@@ -2051,10 +2101,10 @@ class ClientSession(object):
             chk_opts['verify'] = 'adler32'
         result = self._callMethod('checkUpload', (path, name), chk_opts)
         if int(result['size']) != ofs:
-            raise koji.GenericError, "Uploaded file is wrong length: %s/%s, %s != %s" \
-                    % (path, name, result['sumlength'], ofs)
+            raise GenericError, "Uploaded file is wrong length: %s/%s, %s != %s" \
+                    % (path, name, result['size'], ofs)
         if problems and result['hexdigest'] != full_chksum.hexdigest():
-            raise koji.GenericError, "Uploaded file has wrong checksum: %s/%s, %s != %s" \
+            raise GenericError, "Uploaded file has wrong checksum: %s/%s, %s != %s" \
                     % (path, name, result['hexdigest'], full_chksum.hexdigest())
         self.logger.debug("Fast upload: %s complete. %i bytes in %.1f seconds", localfile, size, t2)
 
@@ -2399,11 +2449,6 @@ def _taskLabel(taskInfo):
         return '%s (%s)' % (method, extra)
     else:
         return '%s (%s)' % (method, arch)
-
-def _forceAscii(value):
-    """Replace characters not in the 7-bit ASCII range
-    with "?"."""
-    return ''.join([(ord(c) <= 127) and c or '?' for c in value])
 
 def fixEncoding(value, fallback='iso8859-15'):
     """

@@ -1,6 +1,6 @@
 # utility functions for koji web interface
 #
-# Copyright (c) 2005-2012 Red Hat
+# Copyright (c) 2005-2014 Red Hat, Inc.
 #
 #    Koji is free software; you can redistribute it and/or
 #    modify it under the terms of the GNU Lesser General Public
@@ -54,6 +54,7 @@ def _initValues(environ, title='Build System Info', pageID='summary'):
     values['title'] = title
     values['pageID'] = pageID
     values['currentDate'] = str(datetime.datetime.now())
+    values['literalFooter'] = environ['koji.options'].get('LiteralFooter', True)
     themeCache.clear()
     themeInfo.clear()
     themeInfo['name'] = environ['koji.options'].get('KojiTheme', None)
@@ -225,7 +226,7 @@ def passthrough_except(template, *exclude):
     previously used
     #attr _PASSTHROUGH = ...
     to define the list of variable names to be passed-through.
-    Any variables names passed in will be excluded from the 
+    Any variables names passed in will be excluded from the
     list of variables in the output string.
     """
     passvars = []
@@ -245,7 +246,7 @@ def sortByKeyFunc(key, noneGreatest=False):
         cmpFunc = lambda a, b: (a is None or b is None) and -(cmp(a, b)) or cmp(a, b)
     else:
         cmpFunc = cmp
-        
+
     if key.startswith('-'):
         key = key[1:]
         sortFunc = lambda a, b: cmpFunc(b[key], a[key])
@@ -265,7 +266,7 @@ def paginateList(values, data, start, dataName, prefix=None, order=None, noneGre
     """
     if order != None:
         data.sort(sortByKeyFunc(order, noneGreatest))
-    
+
     totalRows = len(data)
 
     if start:
@@ -277,7 +278,7 @@ def paginateList(values, data, start, dataName, prefix=None, order=None, noneGre
     count = len(data)
 
     _populateValues(values, dataName, prefix, data, totalRows, start, count, pageSize, order)
-    
+
     return data
 
 def paginateMethod(server, values, methodName, args=None, kw=None,
@@ -294,10 +295,10 @@ def paginateMethod(server, values, methodName, args=None, kw=None,
         start = 0
     if not dataName:
         raise StandardError, 'dataName must be specified'
-        
+
     kw['queryOpts'] = {'countOnly': True}
     totalRows = getattr(server, methodName)(*args, **kw)
-    
+
     kw['queryOpts'] = {'order': order,
                        'offset': start,
                        'limit': pageSize}
@@ -402,7 +403,7 @@ def formatDep(name, version, flags):
     a human-readable format.  Copied from
     rpmUtils/miscutils.py:formatRequires()"""
     s = name
-    
+
     if flags:
         if flags & (koji.RPMSENSE_LESS | koji.RPMSENSE_GREATER |
                     koji.RPMSENSE_EQUAL):
@@ -457,6 +458,23 @@ def rowToggle(template):
         return 'row-odd'
     else:
         return 'row-even'
+
+
+def taskScratchClass(task_object):
+    """ Return a css class indicating whether or not this task is a scratch
+    build.
+    """
+    method = task_object['method']
+    request = task_object['request']
+    if method == 'build' and len(request) >= 3:
+        # Each task method has its own signature for what gets put in the
+        # request list.  Builds should have an `opts` dict at index 2.
+        # See www/kojiweb/taskinfo.chtml for the grimoire.
+        opts = request[2]
+        if opts.get('scratch'):
+            return "scratch"
+    return ""
+
 
 _fileFlags = {1: 'configuration',
               2: 'documentation',
@@ -567,4 +585,3 @@ a network issue or load issues on the server."""
     else:
         str = "An error has occurred while processing your request."
     return str, level
-

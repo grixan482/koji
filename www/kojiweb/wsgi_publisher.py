@@ -1,6 +1,6 @@
 # a vaguely publisher-like dispatcher for wsgi
 #
-# Copyright (c) 2012 Red Hat
+# Copyright (c) 2012-2014 Red Hat, Inc.
 #
 #    Koji is free software; you can redistribute it and/or
 #    modify it under the terms of the GNU Lesser General Public
@@ -69,6 +69,7 @@ class Dispatcher(object):
         ['KojiFilesURL', 'string', 'http://localhost/kojifiles'],
         ['KojiTheme', 'string', None],
         ['KojiGreeting', 'string', 'Welcome to Koji Web'],
+        ['LiteralFooter', 'boolean', True],
 
         ['WebPrincipal', 'string', None],
         ['WebKeytab', 'string', '/etc/httpd.keytab'],
@@ -118,21 +119,32 @@ class Dispatcher(object):
         modpy_opts = environ.get('modpy.opts', {})
         if 'modpy.opts' in environ:
             cf = modpy_opts.get('koji.web.ConfigFile', None)
+            cfdir =  modpy_opts.get('koji.web.ConfigDir', None)
             # to aid in the transition from PythonOptions to web.conf, we do
             # not check the config file by default, it must be configured
+            if not cf and not cfdir:
+                self.logger.warn('Warning: configuring Koji via PythonOptions is deprecated. Use web.conf')
         else:
             cf = environ.get('koji.web.ConfigFile', '/etc/kojiweb/web.conf')
-        if cf:
-            if not os.path.isfile(cf):
-                raise koji.GenericError, "Configuration missing: %s" % cf
-            config = RawConfigParser()
-            config.read(cf)
+            cfdir = environ.get('koji.web.ConfigDir', '/etc/kojiweb/web.conf.d')
+        if cfdir:
+            configs = koji.config_directory_contents(cfdir)
         else:
-            #can only happen under mod_python
-            self.logger.warn('Warning: configuring Koji via PythonOptions is deprecated. Use web.conf')
+            configs = []
+        if cf and os.path.isfile(cf):
+            configs.append(cf)
+        if configs:
+            config = RawConfigParser()
+            config.read(configs)
+        elif modpy_opts:
+            # presumably we are configured by modpy options
+            config = None
+        else:
+            raise koji.GenericError, "Configuration missing"
+
         opts = {}
         for name, dtype, default in self.cfgmap:
-            if cf:
+            if config:
                 key = ('web', name)
                 if config.has_option(*key):
                     if dtype == 'integer':

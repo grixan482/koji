@@ -1,10 +1,10 @@
 # Task definitions used by various Koji daemons
 
-# Copyright (c) 2010 Red Hat, Inc.
+# Copyright (c) 2010-2014 Red Hat, Inc.
 #
 #    Koji is free software; you can redistribute it and/or
 #    modify it under the terms of the GNU Lesser General Public
-#    License as published by the Free Software Foundation; 
+#    License as published by the Free Software Foundation;
 #    version 2.1 of the License.
 #
 #    This software is distributed in the hope that it will be useful,
@@ -18,6 +18,7 @@
 
 # Authors:
 #       Mike McLean <mikem@redhat.com>
+#       Mike Bonnet <mikeb@redhat.com>
 
 import koji
 import koji.util
@@ -276,9 +277,9 @@ class BaseTaskHandler(object):
         """chown the given path and all files and directories under
            it to the given uid/gid."""
         for path, dirs, files in os.walk(dirpath):
-            os.chown(path, uid, gid)
+            os.lchown(path, uid, gid)
             for filename in files:
-                os.chown(os.path.join(path, filename), uid, gid)
+                os.lchown(os.path.join(path, filename), uid, gid)
 
     def localPath(self, relpath):
         """Return a local path to a remote file.

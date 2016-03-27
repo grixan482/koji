@@ -1,11 +1,11 @@
 # python library
 
 # db utilities for koji
-# Copyright (c) 2005-2007 Red Hat
+# Copyright (c) 2005-2014 Red Hat, Inc.
 #
 #    Koji is free software; you can redistribute it and/or
 #    modify it under the terms of the GNU Lesser General Public
-#    License as published by the Free Software Foundation; 
+#    License as published by the Free Software Foundation;
 #    version 2.1 of the License.
 #
 #    This software is distributed in the hope that it will be useful,
@@ -91,18 +91,29 @@ class CursorWrapper:
     def fetchall(self,*args,**kwargs):
         return self._timed_call('fetchall',args,kwargs)
 
+    def quote(self, operation, parameters):
+        if _quoteparams is not None:
+            quote = _quoteparams
+        elif hasattr(self.cursor, "_quoteparams"):
+            quote = self.cursor._quoteparams
+        else:
+            quote = lambda a,b: a % b
+        try:
+            return quote(operation, parameters)
+        except Exception:
+            self.logger.exception('Unable to quote query:\n%s\nParameters: %s', operation, parameters)
+            return "INVALID QUERY"
+
     def execute(self, operation, parameters=()):
         debug = self.logger.isEnabledFor(logging.DEBUG)
         if debug:
-            if _quoteparams is not None:
-                quote = _quoteparams
-            elif hasattr(self.cursor, "_quoteparams"):
-                quote = self.cursor._quoteparams
-            else:
-                quote = lambda a,b: a % b
-            self.logger.debug(quote(operation, parameters))
+            self.logger.debug(self.quote(operation, parameters))
             start = time.time()
-        ret = self.cursor.execute(operation, parameters)
+        try:
+            ret = self.cursor.execute(operation, parameters)
+        except Exception:
+            self.logger.error('Query failed. Query was: %s', self.quote(operation, parameters))
+            raise
         if debug:
             self.logger.debug("Execute operation completed in %.4f seconds", time.time() - start)
         return ret

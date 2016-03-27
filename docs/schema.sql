@@ -183,6 +183,7 @@ INSERT INTO channels (name) VALUES ('maven');
 INSERT INTO channels (name) VALUES ('livecd');
 INSERT INTO channels (name) VALUES ('appliance');
 INSERT INTO channels (name) VALUES ('vm');
+INSERT INTO channels (name) VALUES ('image');
 
 -- Here we track the build machines
 -- each host has an entry in the users table also
@@ -370,6 +371,22 @@ CREATE TABLE tag_config (
 	UNIQUE (tag_id,active)
 ) WITHOUT OIDS;
 
+CREATE TABLE tag_extra (
+	tag_id INTEGER NOT NULL REFERENCES tag(id),
+	key TEXT NOT NULL,
+	value TEXT NOT NULL,  -- TODO - move this to jsonb when we can
+-- versioned - see desc above
+	create_event INTEGER NOT NULL REFERENCES events(id) DEFAULT get_event(),
+	revoke_event INTEGER REFERENCES events(id),
+	creator_id INTEGER NOT NULL REFERENCES users(id),
+	revoker_id INTEGER REFERENCES users(id),
+	active BOOLEAN DEFAULT 'true' CHECK (active),
+	CONSTRAINT active_revoke_sane CHECK (
+		(active IS NULL AND revoke_event IS NOT NULL AND revoker_id IS NOT NULL)
+		OR (active IS NOT NULL AND revoke_event IS NULL AND revoker_id IS NULL)),
+	PRIMARY KEY (create_event, tag_id, key),
+	UNIQUE (tag_id, key, active)
+) WITHOUT OIDS;
 
 -- the tag_updates table provides a mechanism to indicate changes relevant to tag
 -- that are not reflected in a versioned table. For example: builds changing volumes,
@@ -695,10 +712,10 @@ CREATE TABLE archivetypes (
         extensions TEXT NOT NULL
 ) WITHOUT OIDS;
 
-insert into archivetypes (name, description, extensions) values ('jar', 'Jar file', 'jar war rar ear');
-insert into archivetypes (name, description, extensions) values ('zip', 'Zip archive', 'zip');
+insert into archivetypes (name, description, extensions) values ('jar', 'Jar file', 'jar war rar ear sar jdocbook jdocbook-style');
+insert into archivetypes (name, description, extensions) values ('zip', 'Zip file', 'zip');
 insert into archivetypes (name, description, extensions) values ('pom', 'Maven Project Object Management file', 'pom');
-insert into archivetypes (name, description, extensions) values ('tar', 'Tar file', 'tar tar.gz tar.bz2');
+insert into archivetypes (name, description, extensions) values ('tar', 'Tar file', 'tar tar.gz tar.bz2 tar.xz');
 insert into archivetypes (name, description, extensions) values ('xml', 'XML file', 'xml');
 insert into archivetypes (name, description, extensions) values ('xsd', 'XML Schema Definition', 'xsd');
 insert into archivetypes (name, description, extensions) values ('spec', 'RPM spec file', 'spec');
@@ -716,10 +733,29 @@ insert into archivetypes (name, description, extensions) values ('raw', 'Raw dis
 insert into archivetypes (name, description, extensions) values ('qcow', 'QCOW image', 'qcow');
 insert into archivetypes (name, description, extensions) values ('qcow2', 'QCOW2 image', 'qcow2');
 insert into archivetypes (name, description, extensions) values ('vmdk', 'vSphere image', 'vmdk');
-insert into archivetypes (name, description, extensions) values ('ova', 'OVA image', 'ova');
+insert into archivetypes (name, description, extensions) values ('ova', 'Open Virtualization Archive', 'ova');
 insert into archivetypes (name, description, extensions) values ('ks', 'Kickstart', 'ks');
 insert into archivetypes (name, description, extensions) values ('cfg', 'Configuration file', 'cfg');
 insert into archivetypes (name, description, extensions) values ('vdi', 'VirtualBox Virtual Disk Image', 'vdi');
+insert into archivetypes (name, description, extensions) values ('aar', 'Binary distribution of an Android Library project', 'aar');
+insert into archivetypes (name, description, extensions) values ('apklib', 'Source distribution of an Android Library project', 'apklib');
+insert into archivetypes (name, description, extensions) values ('cab', 'Windows cabinet file', 'cab');
+insert into archivetypes (name, description, extensions) values ('dylib', 'OS X dynamic library', 'dylib');
+insert into archivetypes (name, description, extensions) values ('gem', 'Ruby gem', 'gem');
+insert into archivetypes (name, description, extensions) values ('ini', 'INI config file', 'ini');
+insert into archivetypes (name, description, extensions) values ('js', 'Javascript file', 'js');
+insert into archivetypes (name, description, extensions) values ('ldif', 'LDAP Data Interchange Format file', 'ldif');
+insert into archivetypes (name, description, extensions) values ('manifest', 'Runtime environment for .NET applications', 'manifest');
+insert into archivetypes (name, description, extensions) values ('msm', 'Windows merge module', 'msm');
+insert into archivetypes (name, description, extensions) values ('properties', 'Properties file', 'properties');
+insert into archivetypes (name, description, extensions) values ('sig', 'Signature file', 'sig signature');
+insert into archivetypes (name, description, extensions) values ('so', 'Shared library', 'so');
+insert into archivetypes (name, description, extensions) values ('txt', 'Text file', 'txt');
+insert into archivetypes (name, description, extensions) values ('vhd', 'Hyper-V image', 'vhd');
+insert into archivetypes (name, description, extensions) values ('wsf', 'Windows script file', 'wsf');
+insert into archivetypes (name, description, extensions) values ('box', 'Vagrant Box Image', 'box');
+insert into archivetypes (name, description, extensions) values ('raw-xz', 'xz compressed raw disk image', 'raw.xz');
+
 
 -- Do we want to enforce a constraint that a build can only generate one
 -- archive with a given name?

@@ -45,7 +45,7 @@
     </tr>
     #end if
     <tr>
-      <th>Built by</th><td><a href="userinfo?userID=$build.owner_id">$build.owner_name</a></td>
+      <th>Built by</th><td class="user-$build.owner_name"><a href="userinfo?userID=$build.owner_id">$build.owner_name</a></td>
     </tr>
     <tr>
       #set $stateName = $util.stateName($build.state)
@@ -59,7 +59,7 @@
       </td>
     </tr>
     <tr>
-      <th>Started</th><td>$util.formatTimeLong($build.creation_time)</td>
+      <th>Started</th><td>$util.formatTimeLong($start_time)</td>
     </tr>
     #if $build.state == $koji.BUILD_STATES.BUILDING
     #if $estCompletion
@@ -127,7 +127,7 @@
               #end if
             </td>
           </tr>
-          #for $rpm in $rpmsByArch[$arch] + $debuginfoByArch.get($arch, [])
+          #for $rpm in $rpmsByArch[$arch]
           <tr>
             #set $rpmfile = '%(name)s-%(version)s-%(release)s.%(arch)s.rpm' % $rpm
             #set $rpmpath = $pathinfo.rpm($rpm)

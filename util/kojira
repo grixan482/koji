@@ -1,11 +1,11 @@
 #!/usr/bin/python
 
 # Koji Repository Administrator (kojira)
-# Copyright (c) 2005-2012 Red Hat
+# Copyright (c) 2005-2014 Red Hat, Inc.
 #
 #    Koji is free software; you can redistribute it and/or
 #    modify it under the terms of the GNU Lesser General Public
-#    License as published by the Free Software Foundation; 
+#    License as published by the Free Software Foundation;
 #    version 2.1 of the License.
 #
 #    This software is distributed in the hope that it will be useful,
@@ -37,6 +37,7 @@ import logging.handlers
 import pprint
 import signal
 import time
+import threading
 import traceback
 
 
@@ -72,8 +73,11 @@ class ManagedRepo(object):
         self.event_ts = data['create_ts']
         self.tag_id = data['tag_id']
         self.state = data['state']
+        self.expire_ts = None
         if koji.REPO_STATES[self.state] in ['EXPIRED', 'DELETED', 'PROBLEM']:
             self.current = False
+            self.expire_ts = time.time()
+            # TODO use hub data to find the actual expiration time
         self.first_seen = time.time()
         if self.current:
             order = self.session.getFullInheritance(self.tag_id, event=self.event_id)
@@ -126,7 +130,7 @@ class ManagedRepo(object):
         if not tag_info:
             tag_info = getTag(self.session, self.tag_id, self.event_id)
         if not tag_info:
-            self.logger.warn('Could not get info for tag %i, skipping delete of repo %i' % 
+            self.logger.warn('Could not get info for tag %i, skipping delete of repo %i' %
                              (self.tag_id, self.repo_id))
             return False
         tag_name = tag_info['name']
@@ -145,7 +149,9 @@ class ManagedRepo(object):
                 self.logger.error("Can't stat repo directory: %s, %s" % (path, e.strerror))
                 return False
         else:
-            age = time.time() - max(self.event_ts, mtime)
+            times = [self.event_ts, mtime, self.first_seen, self.expire_ts]
+            times = [ts for ts in times if ts is not None]
+            age = time.time() - max(times)
             if age < self.options.deleted_repo_lifetime:
                 #XXX should really be called expired_repo_lifetime
                 return False
@@ -278,31 +284,54 @@ class RepoManager(object):
                     self.logger.info('Dropping entry for inactive repo: %s', repo_id)
                     del self.repos[repo_id]
 
-    def checkCurrentRepos(self):
+    def checkCurrentRepos(self, session=None):
         """Determine which repos are current"""
+        if session is None:
+            session = self.session
         to_check = []
-        for repo_id in self.repos:
-            repo = self.repos[repo_id]
+        repo_ids = self.repos.keys()
+        for repo_id in repo_ids:
+            repo = self.repos.get(repo_id)
+            if repo is None:
+                # removed by main thread
+                continue
             if not repo.current:
                 # no point in checking again
                 continue
             if repo.state not in (koji.REPO_READY, koji.REPO_INIT):
                 repo.current = False
+                if repo.expire_ts is None:
+                    repo.expire_ts = time.time()
                 #also no point in further checking
                 continue
             to_check.append(repo)
         if self.logger.isEnabledFor(logging.DEBUG):
-            skipped = set(self.repos).difference([r.repo_id for r in to_check])
+            skipped = set(repo_ids).difference([r.repo_id for r in to_check])
             self.logger.debug("Skipped check for repos: %r", skipped)
         if not to_check:
             return
-        session.multicall = True
+        #session.multicall = True
         for repo in to_check:
-            self.session.tagChangedSinceEvent(repo.event_id, repo.taglist)
-        for repo, [changed] in zip(to_check, session.multiCall(strict=True)):
+            changed = session.tagChangedSinceEvent(repo.event_id, repo.taglist)
+        #for repo, [changed] in zip(to_check, session.multiCall(strict=True)):
             if changed:
-                self.logger.debug("Repo %i no longer current", repo.repo_id)
+                self.logger.info("Repo %i no longer current", repo.repo_id)
                 repo.current = False
+                repo.expire_ts = time.time()
+
+    def currencyChecker(self, session):
+        """Continually checks repos for currency. Runs as a separate thread"""
+        self.logger.info('currencyChecker starting')
+        try:
+            try:
+                while True:
+                    self.checkCurrentRepos(session)
+                    time.sleep(self.options.sleeptime)
+            except:
+                logger.exception('Error in currency checker thread')
+                raise
+        finally:
+            session.logout()
 
     def pruneLocalRepos(self):
         """Scan filesystem for repos and remove any deleted ones
@@ -387,7 +416,12 @@ class RepoManager(object):
         """
         if not data:
             return []
-        self.logger.info("Got %i tags for regeneration", len(data))
+        n_maven = 0
+        for ts, tag_id in data:
+            taginfo = getTag(self.session, tag_id)
+            if taginfo.get('maven_support'):
+                n_maven += 1
+        self.logger.info("Got %i tags for regeneration (%i maven tags)", len(data), n_maven)
         if len(data) == 1:
             return data[:]
         data = [(ts, tag_id, self.tagUseStats(tag_id)) for ts, tag_id in data]
@@ -489,8 +523,9 @@ class RepoManager(object):
         #we need to determine:
         #  - which tags need a new repo
         #  - if any repos seem to be broken
-        self.checkCurrentRepos()
+        #self.checkCurrentRepos now runs continually in a separate thread
         regen = []
+        expire_times = {}
         for tag_id in tags.iterkeys():
             covered = False
             for repo in tag_repos.get(tag_id,[]):
@@ -511,14 +546,20 @@ class RepoManager(object):
             #figure out how old existing repo is
             ts = 0
             for repo in tag_repos.get(tag_id, []):
-                if repo.event_ts > ts:
-                    ts = repo.event_ts
+                if repo.expire_ts:
+                    if repo.expire_ts > ts:
+                        ts = repo.expire_ts
+                else:
+                    self.logger.warning("No expire timestamp for repo: %s", repo.repo_id)
+            expire_times[tag_id] = ts
+            if ts == 0:
+                ts = time.time()
             regen.append((ts, tag_id))
         #factor in tag use stats
         regen = self.adjustRegenOrder(regen)
         self.logger.debug("order: %s", regen)
         # i.e. tags with oldest (or no) repos get precedence
-        for ts, tag_id in regen:
+        for score, tag_id in regen:
             if running_tasks >= self.options.max_repo_tasks:
                 self.logger.info("Maximum number of repo tasks reached")
                 break
@@ -543,7 +584,12 @@ class RepoManager(object):
             running_tasks += 1
             if taginfo.get('maven_support'):
                 running_tasks_maven += 1
-            self.logger.info("Created newRepo task %s for tag %s (%s)" % (task_id, tag_id, tags[tag_id]))
+            expire_ts = expire_times[tag_id]
+            if expire_ts == 0:
+                time_expired = '???'
+            else:
+                time_expired = "%.1f" % (time.time() - expire_ts)
+            self.logger.info("Created newRepo task %s for tag %s (%s), expired for %s sec" % (task_id, tag_id, tags[tag_id], time_expired))
             self.tasks[tag_id] = task_id
         if running_tasks_maven >= self.options.max_repo_tasks_maven:
             self.logger.info("Maximum number of maven repo tasks reached")
@@ -564,6 +610,13 @@ class RepoManager(object):
                         n_deletes += 1
                         del self.repos[repo.repo_id]
 
+def start_currency_checker(session, repomgr):
+    subsession = session.subsession()
+    thread = threading.Thread(name='currencyChecker',
+                        target=repomgr.currencyChecker, args=(subsession,))
+    thread.setDaemon(True)
+    thread.start()
+    return thread
 
 def main(options, session):
     repomgr = RepoManager(options, session)
@@ -571,6 +624,8 @@ def main(options, session):
     def shutdown(*args):
         raise SystemExit
     signal.signal(signal.SIGTERM,shutdown)
+    curr_chk_thread = start_currency_checker(session, repomgr)
+    # TODO also move rmtree jobs to threads
     logger.info("Entering main loop")
     while True:
         try:
@@ -578,6 +633,9 @@ def main(options, session):
             repomgr.checkQueue()
             repomgr.printState()
             repomgr.pruneLocalRepos()
+            if not curr_chk_thread.isAlive():
+                logger.error("Currency checker thread died. Restarting it.")
+                curr_chk_thread = start_currency_checker(session, repomgr)
         except KeyboardInterrupt:
             logger.warn("User exit")
             break
