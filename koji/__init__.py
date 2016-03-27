@@ -1417,8 +1417,6 @@ name=build
     for key, value in files.iteritems():
         parts.append("config_opts['files'][%r] = %r\n" % (key, value))
 
-    parts.append("config_opts['environment']['TASK_ID'] = '{0}'\n".format(opts['task_id']))
-
     return ''.join(parts)
 
 def get_sequence_value(cursor, sequence):
