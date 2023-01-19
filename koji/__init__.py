@@ -1499,6 +1499,8 @@ name=build
     yc_parts.append("baseurl=%s\n" % urls[0])
     for url in urls[1:]:
         yc_parts.append("        %s\n" % url)
+    if opts.get('module_hotfixes'):
+        yc_parts.append("module_hotfixes=1\n")
     config_opts['yum.conf'] = ''.join(yc_parts)
 
     root_cache = opts.get('buildroot_cache', False)
