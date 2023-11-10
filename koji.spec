@@ -75,7 +75,7 @@
 # If the definition isn't available for python3_pkgversion, define it
 %{?!python3_pkgversion:%global python3_pkgversion 3}
 
-%define baserelease 1
+%define baserelease CROC1
 #build with --define 'testbuild 1' to have a timestamp appended to release
 %if "x%{?testbuild}" == "x1"
 %define release %{baserelease}.%(date +%%Y%%m%%d.%%H%%M.%%S)
