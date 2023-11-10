@@ -1791,6 +1791,7 @@ def genMockConfig(name, arch, managed=False, repoid=None, tag_name=None, **opts)
     if managed:
         buildroot_id = opts.get('buildroot_id')
 
+    install_group = opts.get('install_group', 'build')
     # rely on the mock defaults being correct
     # and only includes changes from the defaults here
     config_opts = {
@@ -1799,7 +1800,7 @@ def genMockConfig(name, arch, managed=False, repoid=None, tag_name=None, **opts)
         'target_arch': opts.get('target_arch', arch),
         'chroothome': '/builddir',
         # Use the group data rather than a generated rpm
-        'chroot_setup_cmd': 'groupinstall %s' % opts.get('install_group', 'build'),
+        'chroot_setup_cmd': 'groupinstall %s' % install_group,
         # don't encourage network access from the chroot
         'rpmbuild_networking': opts.get('use_host_resolv', False),
         'use_host_resolv': opts.get('use_host_resolv', False),
@@ -1875,10 +1876,13 @@ name=build
         yc_parts.append("best=%s\n" % int(opts['yum_best']))
     config_opts['yum.conf'] = ''.join(yc_parts)
 
+    root_cache = opts.get('buildroot_cache', False)
+
     plugin_conf = {
         'ccache_enable': False,
         'yum_cache_enable': False,
-        'root_cache_enable': False
+        'root_cache_enable': root_cache,
+        'tmpfs_enable': False,
     }
     # Append config_opts['plugin_conf'] to enable Mock package signing
     plugin_conf.update(opts.get('plugin_conf', {}))
@@ -1932,6 +1936,12 @@ name=build
         else:
             parts.append("config_opts['plugin_conf'][%r] = %r\n" % (key, value))
     parts.append("\n")
+
+    if root_cache:
+        cache_dir = opts.get("buildroot_cache_dir", '/var/cache/mock')
+        parts.append("config_opts['plugin_conf']['root_cache_opts']['dir'] = '%s/%s/%s/'\n" % (cache_dir, tag_name, install_group))
+        parts.append("config_opts['plugin_conf']['root_cache_opts']['age_check'] = False\n")
+        parts.append("\n")
 
     if bind_opts:
         for key in bind_opts.keys():
