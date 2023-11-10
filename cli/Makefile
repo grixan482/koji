@@ -1,6 +1,6 @@
 SUBDIRS=koji_cli
 
-PYTHON=python
+PYTHON=python2
 PACKAGE = $(shell basename `pwd`)
 PYVER := $(shell $(PYTHON) -c 'import sys; print("%.3s" %(sys.version))')
 PYSYSDIR := $(shell $(PYTHON) -c 'import sys; print(sys.prefix)')
