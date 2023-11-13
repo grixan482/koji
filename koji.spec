@@ -467,6 +467,9 @@ fi
 %endif
 
 %changelog
+* Mon Nov 13 2023 Grigoriy Kulagin <grkulagin@croc.ru> - 1.16.1-1-CROC1
+- builder: add patch for build
+
 * Fri Aug 17 2018 Franz Chih-Ping Hsieh <chsieh@redhat.com> - 1.16.1-1
 - PR#1041: fix utf-8 output in CLI
 - PR#1000: Fix target handling in make_task
